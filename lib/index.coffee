@@ -42,3 +42,8 @@ module.exports =
       description: 'Create package list when packages are installed or removed.'
       type: 'boolean'
       default: false
+    uninstall:
+      title: 'Uninstall packages on sync'
+      description: 'Uninstall packages not listed in packages.cson on sync.'
+      type: 'boolean'
+      default: false

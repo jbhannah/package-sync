@@ -27,6 +27,9 @@ class PackageSync
   # Internal: Packages in the process of being installed.
   packagesToInstall: []
 
+  # Internal: Packages in the process of being uninstalled.
+  packagesToUninstall: []
+
   # Internal: Timeout for messages that should be up for only a short time.
   shortMessageTimeout: 1000
 
@@ -41,10 +44,15 @@ class PackageSync
   openPackageList: ->
     atom.workspace.open(PackageList.getPackageListPath())
 
-  # Public: Installs any packages that are missing from the `packages.cson` configuration file.
+  # Public: Installs any packages that are missing from the `packages.cson` configuration file,
+  # and optionally uninstalls any packages that are installed but not in `packages.cson`.
   sync: ->
-    missing = @getMissingPackages()
+    missing = @getMissingPackages(false)
     @installPackages(missing)
+
+    if atom.config.get('package-sync.uninstall')
+      uninstall = @getMissingPackages(true)
+      @uninstallPackages(uninstall)
 
   # Internal: Displays a message in the status bar.
   #
@@ -65,20 +73,20 @@ class PackageSync
   # Internal: Execute APM to install the given package.
   #
   # pkg - A {String} containing the name of the package to install.
-  executeApm: (pkg) ->
-    @displayMessage("Installing #{pkg}")
+  executeApm: (action, pkg) ->
+    @displayMessage("#{if action == "install" then "Install" else "Uninstall"}ing #{pkg}")
     command = @apmPath
-    args = ['install', pkg]
+    args = [action, pkg]
     stdout = (output) ->
     stderr = (output) ->
     exit = (exitCode) =>
       if exitCode is 0
-        if @packagesToInstall.length > 0
-          @displayMessage("#{pkg} installed!", @shortMessageTimeout)
+        if @packagesToInstall.length > 0 or @packagesToUninstall.length > 0
+          @displayMessage("#{pkg} #{action}ed!", @shortMessageTimeout)
         else
           @displayMessage('Package Sync complete!', @longMessageTimeout)
       else
-        @displayMessage("An error occurred installing #{pkg}", @longMessageTimeout)
+        @displayMessage("An error occurred #{action}ing #{pkg}", @longMessageTimeout)
 
       @currentInstall = null
       @installPackage()
@@ -87,19 +95,30 @@ class PackageSync
 
   # Internal: Gets the list of packages that are missing.
   #
+  # uninstall - A {Boolean} indicating whether to install packages in the list
+  # but missing from Atom (false), or uninstall packages in Atom but missing
+  # from the list (true).
+  #
   # Returns an {Array} of names of packages that need to be installed.
-  getMissingPackages: ->
+  getMissingPackages: (uninstall = false) ->
     list = new PackageList()
     syncPackages = list.getPackages()
-    availablePackages = atom.packages.getAvailablePackageNames()
-    value for value in syncPackages when value not in availablePackages
+
+    # Only compare against the list of non-bundled packages
+    availablePackageNames = atom.packages.getAvailablePackageNames()
+    availablePackages = (pkg for pkg in availablePackageNames when not atom.packages.isBundledPackage(pkg))
+
+    if uninstall
+      value for value in availablePackages when value not in syncPackages
+    else
+      value for value in syncPackages when value not in availablePackages
 
   # Internal: Installs the next package in the list.
   installPackage: ->
     # Exit if there is already an installation running or if there are no more
     # packages to install.
     return if @currentInstall? or @packagesToInstall.length is 0
-    @executeApm(@packagesToInstall.shift())
+    @executeApm("install", @packagesToInstall.shift())
 
   # Internal: Installs each of the packages in the given list.
   #
@@ -107,6 +126,20 @@ class PackageSync
   installPackages: (packages) ->
     @packagesToInstall.push(packages...)
     @installPackage()
+
+  # Internal: Uninstalls the next package in the list.
+  uninstallPackage: ->
+    # Exit if there is already an installation running or if there are no more
+    # packages to uninstall.
+    return if @currentInstall? or @packagesToUninstall.length is 0
+    @executeApm("uninstall", @packagesToUninstall.shift())
+
+  # Internal: Uninstalls each of the packages in the given list.
+  #
+  # packages - An {Array} containing the names of packages to uninstall.
+  uninstallPackages: (packages) ->
+    @packagesToUninstall.push(packages...)
+    @uninstallPackage()
 
   # Internal: Sets a timeout to remove the status bar message.
   #

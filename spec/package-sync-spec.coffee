@@ -23,4 +23,11 @@ describe 'PackageSync', ->
       spyOn(atom, 'getConfigDirPath').andReturn(os.tmpdir())
       spyOn(atom.packages, 'getAvailablePackageNames').andReturn(['foo'])
 
-      expect(@sync.getMissingPackages()).toEqual(['bar', 'baz'])
+      expect(@sync.getMissingPackages(false)).toEqual(['bar', 'baz'])
+
+    it 'gets a list of installed packages, excluding ones that are in the list', ->
+      h.createPackages({'packages': ['foo', 'bar']})
+      spyOn(atom, 'getConfigDirPath').andReturn(os.tmpdir())
+      spyOn(atom.packages, 'getAvailablePackageNames').andReturn(['foo', 'bar', 'baz'])
+
+      expect(@sync.getMissingPackages(true)).toEqual(['baz'])
